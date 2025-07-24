@@ -19,6 +19,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendEmailConfirmationDto } from './dto/resend-email-confirmation.dto';
 import { LoggedUser } from './logged-user.decorator';
 
 @Controller('auth')
@@ -39,6 +40,8 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
   async refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refreshAccessToken(body.refreshToken);
@@ -47,7 +50,7 @@ export class AuthController {
   @Post('forgot-password')
   @ApiOperation({ summary: 'Request password reset code by email' })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto.email);
+    return this.authService.forgotPassword(dto.email, dto.storeId);
   }
 
   @Post('verify-code')
@@ -68,7 +71,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify user email with confirmation code' })
   async verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(dto.email, dto.code);
+    return this.authService.verifyEmail(dto.email, dto.code, dto.storeId);
+  }
+
+  @Post('resend-email-confirmation')
+  @ApiOperation({ summary: 'Resend email confirmation code' })
+  async resendEmailConfirmation(@Body() dto: ResendEmailConfirmationDto) {
+    return this.authService.resendEmailConfirmation(dto.email, dto.storeId);
   }
 
   @Get('token')

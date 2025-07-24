@@ -7,6 +7,7 @@ import { VerifyCodeDto } from './dto/verify-code.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { EmailService } from '../email/email.service';
 import { getPasswordResetTemplate } from '../email/templates/password-reset.template';
+import { getEmailConfirmationTemplate } from '../email/templates/email-confirmation.template';
 
 @Injectable()
 export class AuthService {
@@ -32,9 +33,12 @@ export class AuthService {
   };
 
   async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
-    const user = await this.prisma.user.findUnique({
-      where: { email },
+    const { email, password, storeId } = loginDto;
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      },
       select: this.authUser,
     });
     if (!user) {
@@ -109,17 +113,25 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(email: string) {
+  async forgotPassword(email: string, storeId: string) {
     // Check if user exists
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      }
+    });
     if (!user) {
       throw new BadRequestException('User with this email does not exist');
     }
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     // Save code and expiration (10min) in user table
-    await this.prisma.user.update({
-      where: { email },
+    await this.prisma.user.updateMany({
+      where: {
+        email,
+        storeId
+      },
       data: {
         resetPasswordCode: code,
         resetPasswordExpires: new Date(Date.now() + 10 * 60 * 1000),
@@ -136,10 +148,15 @@ export class AuthService {
   }
 
   async verifyCode(verifyCodeDto: VerifyCodeDto) {
-    const { email, code } = verifyCodeDto;
+    const { email, code, storeId } = verifyCodeDto;
 
     // Check if user exists
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      }
+    });
     if (!user) {
       throw new BadRequestException('User with this email does not exist');
     }
@@ -161,7 +178,7 @@ export class AuthService {
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
-    const { email, code, password, confirmPassword } = resetPasswordDto;
+    const { email, code, password, confirmPassword, storeId } = resetPasswordDto;
 
     // Validate password confirmation
     if (password !== confirmPassword) {
@@ -169,7 +186,12 @@ export class AuthService {
     }
 
     // Check if user exists
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      }
+    });
     if (!user) {
       throw new BadRequestException('User with this email does not exist');
     }
@@ -191,8 +213,11 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Update password and clear reset code
-    await this.prisma.user.update({
-      where: { email },
+    await this.prisma.user.updateMany({
+      where: {
+        email,
+        storeId
+      },
       data: {
         password: hashedPassword,
         resetPasswordCode: null,
@@ -201,8 +226,11 @@ export class AuthService {
     });
 
     // Buscar usuário atualizado
-    const updatedUser = await this.prisma.user.findUnique({
-      where: { email },
+    const updatedUser = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      },
       select: this.authUser,
     });
     if (!updatedUser) {
@@ -239,10 +267,13 @@ export class AuthService {
     };
   }
 
-  async verifyEmail(email: string, code: string) {
+  async verifyEmail(email: string, code: string, storeId: string) {
     // Check if user exists
-    const user = await this.prisma.user.findUnique({
-      where: { email },
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      },
       select: {
         id: true,
         email: true,
@@ -275,12 +306,32 @@ export class AuthService {
       throw new BadRequestException('Invalid confirmation code');
     }
 
+    // Check if code has expired
+    const userWithExpiration = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      },
+      select: {
+        emailConfirmationExpires: true,
+      }
+    });
+
+    if (userWithExpiration?.emailConfirmationExpires &&
+        new Date() > userWithExpiration.emailConfirmationExpires) {
+      throw new BadRequestException('Confirmation code has expired');
+    }
+
     // Update user to verified
-    await this.prisma.user.update({
-      where: { email },
+    await this.prisma.user.updateMany({
+      where: {
+        email,
+        storeId
+      },
       data: {
         emailVerified: true,
         emailConfirmationCode: null,
+        emailConfirmationExpires: null,
       },
     });
 
@@ -312,6 +363,61 @@ export class AuthService {
         expiresIn,
       },
       user: userData,
+    };
+  }
+
+  async resendEmailConfirmation(email: string, storeId: string) {
+    // Check if user exists and is not verified
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email,
+        storeId
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        emailVerified: true,
+      }
+    });
+
+    if (!user) {
+      throw new BadRequestException('User with this email does not exist');
+    }
+
+    if (user.emailVerified) {
+      throw new BadRequestException('Email is already verified');
+    }
+
+    // Generate new confirmation code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Set new expiration time to 24 hours from now
+    const emailConfirmationExpires = new Date();
+    emailConfirmationExpires.setHours(emailConfirmationExpires.getHours() + 24);
+
+    // Update user with new code and expiration
+    await this.prisma.user.updateMany({
+      where: {
+        email,
+        storeId
+      },
+      data: {
+        emailConfirmationCode: code,
+        emailConfirmationExpires,
+      },
+    });
+
+    // Send new confirmation email
+    const html = getEmailConfirmationTemplate(code, user.name);
+    await this.emailService.sendEmail(
+      email,
+      'Confirme seu cadastro - Novo código',
+      html,
+    );
+
+    return {
+      message: 'New confirmation code sent successfully',
     };
   }
 }

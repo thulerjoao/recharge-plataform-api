@@ -29,9 +29,12 @@ export class UserService {
     storeId: true,
   };
 
-  async findAll(): Promise<User[]> {
+  async findAll(storeId: string): Promise<User[]> {
     try {
-      const data = await this.prisma.user.findMany({ select: this.userSelect });
+      const data = await this.prisma.user.findMany({
+        where: { storeId },
+        select: this.userSelect
+      });
       return data;
     } catch (error) {
       throw new BadRequestException('Failed to fetch users');
@@ -69,11 +72,16 @@ export class UserService {
       // Generate email confirmation code
       const code = Math.floor(100000 + Math.random() * 900000).toString();
 
+      // Set expiration time to 24 hours from now
+      const emailConfirmationExpires = new Date();
+      emailConfirmationExpires.setHours(emailConfirmationExpires.getHours() + 24);
+
       const data = {
         ...rest,
         password: await bcrypt.hash(dto.password, 10),
         emailConfirmationCode: code,
         emailVerified: false,
+        emailConfirmationExpires,
       };
 
       const user = await this.prisma.user.create({

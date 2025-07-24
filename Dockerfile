@@ -21,6 +21,10 @@ RUN npm install --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY start.sh ./
+
+# Copy all files from dist/src to dist to maintain module structure
+RUN cp -r dist/src/* dist/ && rm -rf dist/src
 
 EXPOSE 3333
 

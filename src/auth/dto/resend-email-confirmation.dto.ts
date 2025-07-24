@@ -1,12 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, IsString, IsUUID } from 'class-validator';
 
-export class ForgotPasswordDto {
+export class ResendEmailConfirmationDto {
   @IsString()
   @IsNotEmpty()
   @IsEmail()
   @ApiProperty({
-    description: 'User email address to send the reset code',
+    description: 'User email address to resend the confirmation code',
     example: 'user@example.com',
   })
   email: string;
